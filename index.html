@@ -266,7 +266,7 @@ document.getElementById('leadForm').addEventListener('submit',async function(e){
   };
 
   // GOOGLE SHEETS — uncomment and add your URL:
-  // try{await fetch('YOUR_APPS_SCRIPT_URL',{method:'POST',body:JSON.stringify(data)})}catch(err){console.log(err)}
+  try{await fetch('https://script.google.com/macros/s/AKfycbxbOaqTRa66p0UQoA2WMr6gk-hDGxzwBmURdSiIFk5-ta8dKqhJEeHznZwy2OXxV8et/exec',{method:'POST',body:JSON.stringify(data)})}catch(err){console.log(err)}
 
   console.log('Lead:',data);
   await new Promise(r=>setTimeout(r,600));
