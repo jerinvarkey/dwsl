@@ -325,9 +325,13 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
     }
   });
 
-  // 6. SEND EVERYTHING ON EXIT (one row)
+// 6. SEND EVERYTHING ON EXIT (one row, one time)
+  let sessionSent = false;
   function sendSession() {
+    if (sessionSent) return;
+    sessionSent = true;
     session.total_seconds = Math.floor(performance.now() / 1000);
+    session.seconds_on_page = session.total_seconds;
     session.scroll_percent = session.max_scroll;
     fetch(SCRIPT_URL, {
       method: 'POST',
@@ -338,15 +342,6 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
   window.addEventListener('beforeunload', sendSession);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) sendSession();
-  });
-
-  // 7. IMMEDIATE PAGE VISIT PING (so you still get a row even if exit doesn't fire)
-  window.addEventListener('DOMContentLoaded', () => {
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify(session)
-    });
   });
 
   // 8. FORM SUBMISSION
