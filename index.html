@@ -259,14 +259,11 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
   <div class="footer-links"><a href="https://www.instagram.com/sugarlandwellness/" target="_blank" class="footer-ig"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg> @sugarlandwellness</a></div>
   <p>Degree Wellness &#8226; Sugar Land, TX<br>18802 University Blvd, Suite 160<br><br>&copy; 2026 Degree Wellness Sugar Land &#8226; <a href="https://degreewellness.com/locations/sugar-land-tx/founding-membership/" target="_blank">degreewellness.com</a></p>
 </footer>
-
 <script>
-  // 1. DEFINE THE URL FIRST
+  // 1. DEFINE THE URL
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyMXFgb1ZiSiffgwy_nqdhf6spw4mD0qE7hcDYcGq9t8pZiviTnSkFGb5t_YKBR0o2Y/exec';
 
-  // ──────────────────────────────────────────────
-  // 2. VISITOR FINGERPRINT (anonymous session ID)
-  // ──────────────────────────────────────────────
+  // 2. VISITOR ID
   function getVisitorId() {
     let id = sessionStorage.getItem('oa_visitor_id');
     if (!id) {
@@ -276,220 +273,110 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
     return id;
   }
 
-  // ──────────────────────────────────────────────
-  // 3. COLLECT RICH CONTEXT
-  // ──────────────────────────────────────────────
-  function getTrackingContext() {
-    const params = new URLSearchParams(window.location.search);
-    return {
-      // --- Where they came from ---
-      referrer:       document.referrer || '(direct)',
-      utm_source:     params.get('utm_source')   || '',
-      utm_medium:     params.get('utm_medium')   || '',
-      utm_campaign:   params.get('utm_campaign')  || '',
-      utm_content:    params.get('utm_content')   || '',
-      utm_term:       params.get('utm_term')      || '',
+  // 3. SESSION TRACKER — collects everything, sends once
+  const session = {
+    event_type: 'PAGE_SESSION',
+    firstName: 'PAGE_VISIT',
+    source: 'Sugar Land Site Load',
+    visitor_id: getVisitorId(),
+    timestamp: new Date().toISOString(),
+    referrer: document.referrer || '(direct)',
+    utm_source: new URLSearchParams(location.search).get('utm_source') || '',
+    utm_medium: new URLSearchParams(location.search).get('utm_medium') || '',
+    utm_campaign: new URLSearchParams(location.search).get('utm_campaign') || '',
+    page_url: location.href,
+    page_title: document.title,
+    is_mobile: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
+    screen_width: screen.width,
+    viewport_width: window.innerWidth,
+    user_agent: navigator.userAgent,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    max_scroll: 0,
+    total_seconds: 0,
+    clicks: [],
+    cta_text: '',
+    clicked_url: '',
+    contact_type: ''
+  };
 
-      // --- What page they're on ---
-      page_url:       window.location.href,
-      page_path:      window.location.pathname,
-      page_title:     document.title,
+  // 4. TRACK SCROLL DEPTH (just updates the max, no send)
+  window.addEventListener('scroll', () => {
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    if (docHeight <= 0) return;
+    const pct = Math.round((window.scrollY / docHeight) * 100);
+    if (pct > session.max_scroll) session.max_scroll = pct;
+  }, { passive: true });
 
-      // --- Device / browser info ---
-      screen_width:   screen.width,
-      screen_height:  screen.height,
-      viewport_width: window.innerWidth,
-      viewport_height:window.innerHeight,
-      user_agent:     navigator.userAgent,
-      language:       navigator.language,
-      platform:       navigator.platform || '',
-      is_mobile:      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
+  // 5. TRACK CLICKS (stores them, no send)
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (link) {
+      const href = link.getAttribute('href') || '';
+      if (href.startsWith('http') && !href.includes(location.hostname)) {
+        session.clicked_url = href;
+      }
+      if (href.startsWith('tel:') || href.startsWith('mailto:')) {
+        session.contact_type = href.split(':')[0];
+      }
+    }
+    const btn = e.target.closest('button, [data-track]');
+    if (btn && btn.id !== 'submitBtn') {
+      session.cta_text = btn.innerText.slice(0, 100);
+    }
+  });
 
-      // --- Session info ---
-      visitor_id:     getVisitorId(),
-      timezone:       Intl.DateTimeFormat().resolvedOptions().timeZone,
-      timestamp:      new Date().toISOString(),
-    };
-  }
-
-  // ──────────────────────────────────────────────
-  // 4. SEND EVENT HELPER
-  // ──────────────────────────────────────────────
-function sendEvent(eventType, extraData = {}) {
-    const payload = {
-      event_type: eventType,
-      ...getTrackingContext(),
-      ...extraData,
-    };
+  // 6. SEND EVERYTHING ON EXIT (one row)
+  function sendSession() {
+    session.total_seconds = Math.floor(performance.now() / 1000);
+    session.scroll_percent = session.max_scroll;
     fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors',
-      body: JSON.stringify(payload)
+      body: JSON.stringify(session)
     });
   }
+  window.addEventListener('beforeunload', sendSession);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) sendSession();
+  });
 
-  // ──────────────────────────────────────────────
-  // 5. PAGE VISIT TRACKING (replaces your old ping)
-  // ──────────────────────────────────────────────
+  // 7. IMMEDIATE PAGE VISIT PING (so you still get a row even if exit doesn't fire)
   window.addEventListener('DOMContentLoaded', () => {
-    sendEvent('PAGE_VISIT', {
-      firstName: 'PAGE_VISIT',
-      source: 'Sugar Land Site Load'
+    fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify(session)
     });
   });
 
-  // ──────────────────────────────────────────────
-  // 6. SCROLL DEPTH TRACKING
-  //    Fires once per milestone: 25%, 50%, 75%, 100%
-  // ──────────────────────────────────────────────
-  (function() {
-    const milestones = [25, 50, 75, 100];
-    const fired = new Set();
-    window.addEventListener('scroll', () => {
-      const scrollTop = window.scrollY || document.documentElement.scrollTop;
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-      if (docHeight <= 0) return;
-      const pct = Math.round((scrollTop / docHeight) * 100);
-      milestones.forEach(m => {
-        if (pct >= m && !fired.has(m)) {
-          fired.add(m);
-          sendEvent('SCROLL_DEPTH', { scroll_percent: m });
-        }
-      });
-    }, { passive: true });
-  })();
-
-  // ──────────────────────────────────────────────
-  // 7. TIME ON PAGE TRACKING
-  //    Fires at 30s, 60s, 120s, 300s
-  // ──────────────────────────────────────────────
-  (function() {
-    const checkpoints = [30, 60, 120, 300];
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i >= checkpoints.length) { clearInterval(interval); return; }
-      sendEvent('TIME_ON_PAGE', { seconds_on_page: checkpoints[i] });
-      i++;
-    }, (i === 0 ? checkpoints[0] : checkpoints[i] - checkpoints[i - 1]) * 1000);
-
-    // More accurate version using actual elapsed time
-    clearInterval(interval);
-    const startTime = Date.now();
-    const firedTimes = new Set();
-    const timeCheck = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      checkpoints.forEach(cp => {
-        if (elapsed >= cp && !firedTimes.has(cp)) {
-          firedTimes.add(cp);
-          sendEvent('TIME_ON_PAGE', { seconds_on_page: cp });
-        }
-      });
-      if (firedTimes.size >= checkpoints.length) clearInterval(timeCheck);
-    }, 5000);
-  })();
-
-  // ──────────────────────────────────────────────
-  // 8. EXIT INTENT TRACKING (desktop)
-  //    Fires when mouse leaves toward the top of viewport
-  // ──────────────────────────────────────────────
-  (function() {
-    let exitFired = false;
-    document.addEventListener('mouseout', (e) => {
-      if (exitFired) return;
-      if (e.clientY < 5 && e.relatedTarget === null) {
-        exitFired = true;
-        sendEvent('EXIT_INTENT', { seconds_before_exit: Math.floor((Date.now() - performance.now()) / 1000) });
-      }
-    });
-  })();
-
-  // ──────────────────────────────────────────────
-  // 9. OUTBOUND LINK CLICK TRACKING
-  // ──────────────────────────────────────────────
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('a');
-    if (!link) return;
-    const href = link.getAttribute('href');
-    if (!href) return;
-
-    // Track outbound links
-    if (href.startsWith('http') && !href.includes(window.location.hostname)) {
-      sendEvent('OUTBOUND_CLICK', { clicked_url: href, link_text: link.innerText.slice(0, 100) });
-    }
-    // Track tel: and mailto: clicks
-    if (href.startsWith('tel:') || href.startsWith('mailto:')) {
-      sendEvent('CONTACT_CLICK', { contact_type: href.split(':')[0], contact_value: href.split(':')[1] });
-    }
-  });
-
-  // ──────────────────────────────────────────────
-  // 10. CTA / BUTTON CLICK TRACKING
-  //     Tracks any button or element with data-track attribute
-  // ──────────────────────────────────────────────
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('button, [data-track]');
-    if (!btn) return;
-    if (btn.id === 'submitBtn') return; // handled by form submit
-    sendEvent('CTA_CLICK', {
-      cta_id: btn.id || '',
-      cta_text: btn.innerText.slice(0, 100),
-      cta_track: btn.getAttribute('data-track') || ''
-    });
-  });
-
-  // ──────────────────────────────────────────────
-  // 11. FORM SUBMISSION (upgraded from your original)
-  // ──────────────────────────────────────────────
+  // 8. FORM SUBMISSION
   document.getElementById('leadForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
     btn.innerText = "Processing...";
 
-    const data = {
-      event_type:  'FORM_SUBMIT',
-      firstName:   document.getElementById('firstName').value,
-      email:       document.getElementById('email').value,
-      phone:       document.getElementById('phone').value,
-      ...getTrackingContext(),
+    const formData = {
+      ...session,
+      event_type: 'FORM_SUBMIT',
+      firstName: document.getElementById('firstName').value,
+      email: document.getElementById('email').value,
+      phone: document.getElementById('phone').value,
+      total_seconds: Math.floor(performance.now() / 1000),
+      scroll_percent: session.max_scroll
     };
 
     try {
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
-        body: JSON.stringify(data)
+        body: JSON.stringify(formData)
       });
-      alert("Thank you! We'll be in touch.");
+      alert("Success! We'll be in touch.");
       btn.innerText = "Reserved!";
-
-      // Fire a conversion event too
-      sendEvent('CONVERSION', { 
-        conversion_type: 'lead_form',
-        lead_name: data.firstName 
-      });
     } catch (err) {
       console.error(err);
       btn.innerText = "Error. Try again.";
-      sendEvent('FORM_ERROR', { error: err.message || 'unknown' });
     }
-  });
-
-  // ──────────────────────────────────────────────
-  // 12. PAGE VISIBILITY / TAB SWITCHING
-  // ──────────────────────────────────────────────
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      sendEvent('TAB_HIDDEN', { seconds_active: Math.floor(performance.now() / 1000) });
-    }
-  });
-
-  // ──────────────────────────────────────────────
-  // 13. PAGE EXIT (best-effort)
-  // ──────────────────────────────────────────────
-  window.addEventListener('beforeunload', () => {
-    sendEvent('PAGE_EXIT', { 
-      total_seconds: Math.floor(performance.now() / 1000) 
-    });
   });
 </script>
 
