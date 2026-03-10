@@ -264,29 +264,199 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
   // 1. DEFINE THE URL FIRST
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbOaqTRa66p0UQoA2WMr6gk-hDGxzwBmURdSiIFk5-ta8dKqhJEeHznZwy2OXxV8et/exec';
 
-  // 2. THE ANALYTICS PING
+  // ──────────────────────────────────────────────
+  // 2. VISITOR FINGERPRINT (anonymous session ID)
+  // ──────────────────────────────────────────────
+  function getVisitorId() {
+    let id = sessionStorage.getItem('oa_visitor_id');
+    if (!id) {
+      id = 'v_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      sessionStorage.setItem('oa_visitor_id', id);
+    }
+    return id;
+  }
+
+  // ──────────────────────────────────────────────
+  // 3. COLLECT RICH CONTEXT
+  // ──────────────────────────────────────────────
+  function getTrackingContext() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      // --- Where they came from ---
+      referrer:       document.referrer || '(direct)',
+      utm_source:     params.get('utm_source')   || '',
+      utm_medium:     params.get('utm_medium')   || '',
+      utm_campaign:   params.get('utm_campaign')  || '',
+      utm_content:    params.get('utm_content')   || '',
+      utm_term:       params.get('utm_term')      || '',
+
+      // --- What page they're on ---
+      page_url:       window.location.href,
+      page_path:      window.location.pathname,
+      page_title:     document.title,
+
+      // --- Device / browser info ---
+      screen_width:   screen.width,
+      screen_height:  screen.height,
+      viewport_width: window.innerWidth,
+      viewport_height:window.innerHeight,
+      user_agent:     navigator.userAgent,
+      language:       navigator.language,
+      platform:       navigator.platform || '',
+      is_mobile:      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
+
+      // --- Session info ---
+      visitor_id:     getVisitorId(),
+      timezone:       Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timestamp:      new Date().toISOString(),
+    };
+  }
+
+  // ──────────────────────────────────────────────
+  // 4. SEND EVENT HELPER
+  // ──────────────────────────────────────────────
+  function sendEvent(eventType, extraData = {}) {
+    const payload = {
+      event_type: eventType,
+      ...getTrackingContext(),
+      ...extraData,
+    };
+    // Use sendBeacon for reliability (fires even on page close)
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(SCRIPT_URL, blob);
+    } else {
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify(payload)
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // 5. PAGE VISIT TRACKING (replaces your old ping)
+  // ──────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({ 
-        firstName: 'PAGE_VISIT', 
-        source: 'Sugar Land Site Load' 
-      })
+    sendEvent('PAGE_VISIT', {
+      firstName: 'PAGE_VISIT',
+      source: 'Sugar Land Site Load'
     });
   });
 
-  // 3. THE FORM SUBMISSION LOGIC
+  // ──────────────────────────────────────────────
+  // 6. SCROLL DEPTH TRACKING
+  //    Fires once per milestone: 25%, 50%, 75%, 100%
+  // ──────────────────────────────────────────────
+  (function() {
+    const milestones = [25, 50, 75, 100];
+    const fired = new Set();
+    window.addEventListener('scroll', () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (docHeight <= 0) return;
+      const pct = Math.round((scrollTop / docHeight) * 100);
+      milestones.forEach(m => {
+        if (pct >= m && !fired.has(m)) {
+          fired.add(m);
+          sendEvent('SCROLL_DEPTH', { scroll_percent: m });
+        }
+      });
+    }, { passive: true });
+  })();
+
+  // ──────────────────────────────────────────────
+  // 7. TIME ON PAGE TRACKING
+  //    Fires at 30s, 60s, 120s, 300s
+  // ──────────────────────────────────────────────
+  (function() {
+    const checkpoints = [30, 60, 120, 300];
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i >= checkpoints.length) { clearInterval(interval); return; }
+      sendEvent('TIME_ON_PAGE', { seconds_on_page: checkpoints[i] });
+      i++;
+    }, (i === 0 ? checkpoints[0] : checkpoints[i] - checkpoints[i - 1]) * 1000);
+
+    // More accurate version using actual elapsed time
+    clearInterval(interval);
+    const startTime = Date.now();
+    const firedTimes = new Set();
+    const timeCheck = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      checkpoints.forEach(cp => {
+        if (elapsed >= cp && !firedTimes.has(cp)) {
+          firedTimes.add(cp);
+          sendEvent('TIME_ON_PAGE', { seconds_on_page: cp });
+        }
+      });
+      if (firedTimes.size >= checkpoints.length) clearInterval(timeCheck);
+    }, 5000);
+  })();
+
+  // ──────────────────────────────────────────────
+  // 8. EXIT INTENT TRACKING (desktop)
+  //    Fires when mouse leaves toward the top of viewport
+  // ──────────────────────────────────────────────
+  (function() {
+    let exitFired = false;
+    document.addEventListener('mouseout', (e) => {
+      if (exitFired) return;
+      if (e.clientY < 5 && e.relatedTarget === null) {
+        exitFired = true;
+        sendEvent('EXIT_INTENT', { seconds_before_exit: Math.floor((Date.now() - performance.now()) / 1000) });
+      }
+    });
+  })();
+
+  // ──────────────────────────────────────────────
+  // 9. OUTBOUND LINK CLICK TRACKING
+  // ──────────────────────────────────────────────
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (!link) return;
+    const href = link.getAttribute('href');
+    if (!href) return;
+
+    // Track outbound links
+    if (href.startsWith('http') && !href.includes(window.location.hostname)) {
+      sendEvent('OUTBOUND_CLICK', { clicked_url: href, link_text: link.innerText.slice(0, 100) });
+    }
+    // Track tel: and mailto: clicks
+    if (href.startsWith('tel:') || href.startsWith('mailto:')) {
+      sendEvent('CONTACT_CLICK', { contact_type: href.split(':')[0], contact_value: href.split(':')[1] });
+    }
+  });
+
+  // ──────────────────────────────────────────────
+  // 10. CTA / BUTTON CLICK TRACKING
+  //     Tracks any button or element with data-track attribute
+  // ──────────────────────────────────────────────
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button, [data-track]');
+    if (!btn) return;
+    if (btn.id === 'submitBtn') return; // handled by form submit
+    sendEvent('CTA_CLICK', {
+      cta_id: btn.id || '',
+      cta_text: btn.innerText.slice(0, 100),
+      cta_track: btn.getAttribute('data-track') || ''
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // 11. FORM SUBMISSION (upgraded from your original)
+  // ──────────────────────────────────────────────
   document.getElementById('leadForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
     btn.innerText = "Processing...";
-    
+
     const data = {
-      firstName: document.getElementById('firstName').value,
-      email: document.getElementById('email').value,
-      phone: document.getElementById('phone').value,
-      timestamp: new Date().toISOString()
+      event_type:  'FORM_SUBMIT',
+      firstName:   document.getElementById('firstName').value,
+      email:       document.getElementById('email').value,
+      phone:       document.getElementById('phone').value,
+      ...getTrackingContext(),
     };
 
     try {
@@ -297,11 +467,37 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
       });
       alert("Success! We'll be in touch.");
       btn.innerText = "Reserved!";
+
+      // Fire a conversion event too
+      sendEvent('CONVERSION', { 
+        conversion_type: 'lead_form',
+        lead_name: data.firstName 
+      });
     } catch (err) {
       console.error(err);
       btn.innerText = "Error. Try again.";
+      sendEvent('FORM_ERROR', { error: err.message || 'unknown' });
     }
   });
+
+  // ──────────────────────────────────────────────
+  // 12. PAGE VISIBILITY / TAB SWITCHING
+  // ──────────────────────────────────────────────
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      sendEvent('TAB_HIDDEN', { seconds_active: Math.floor(performance.now() / 1000) });
+    }
+  });
+
+  // ──────────────────────────────────────────────
+  // 13. PAGE EXIT (best-effort)
+  // ──────────────────────────────────────────────
+  window.addEventListener('beforeunload', () => {
+    sendEvent('PAGE_EXIT', { 
+      total_seconds: Math.floor(performance.now() / 1000) 
+    });
+  });
 </script>
+
 </body>
 </html>
