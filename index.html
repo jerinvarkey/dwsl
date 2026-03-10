@@ -344,35 +344,33 @@ body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--black);
     if (document.hidden) sendSession();
   });
 
-  // // 8. FORM SUBMISSION
-  window.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('leadForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const btn = document.getElementById('submitBtn');
-      btn.innerText = "Processing...";
-      const formData = {
-        ...session,
-        event_type: 'FORM_SUBMIT',
-        firstName: document.getElementById('firstName').value,
-        email: document.getElementById('email').value,
-        phone: document.getElementById('phone').value,
-        total_seconds: Math.floor(performance.now() / 1000),
-        scroll_percent: session.max_scroll
-      };
-      try {
-        await fetch(SCRIPT_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          body: JSON.stringify(formData)
-        });
-        sessionSent = true;
-        alert("Success! We'll be in touch.");
-        btn.innerText = "Reserved!";
-      } catch (err) {
-        console.error(err);
-        btn.innerText = "Error. Try again.";
-      }
-    });
+  // 8. FORM SUBMISSION
+  document.getElementById('leadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.innerText = "Processing...";
+    const formData = {
+      ...session,
+      event_type: 'FORM_SUBMIT',
+      firstName: document.getElementById('firstName').value,
+      email: document.getElementById('email').value,
+      phone: document.getElementById('phone').value,
+      total_seconds: Math.floor(performance.now() / 1000),
+      scroll_percent: session.max_scroll
+    };
+    try {
+      await fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify(formData)
+      });
+      sessionSent = true;
+      alert("Success! We'll be in touch.");
+      btn.innerText = "Reserved!";
+    } catch (err) {
+      console.error(err);
+      btn.innerText = "Error. Try again.";
+    }
   });
 </script>
 
