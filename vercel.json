@@ -7,9 +7,9 @@
     }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+    { "src": "/og-image.jpg", "dest": "/og-image.jpg" },
+    { "src": "/favicon.ico", "dest": "/favicon.ico" },
+    { "src": "/apple-touch-icon.png", "dest": "/apple-touch-icon.png" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
